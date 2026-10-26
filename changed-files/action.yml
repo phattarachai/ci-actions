@@ -1,0 +1,44 @@
+name: Changed files
+description: >-
+  List a pull request's added, copied, modified and renamed files that match some patterns, into a
+  file. Names never pass through an expression, so a crafted file name cannot inject shell.
+
+inputs:
+  patterns:
+    description: >-
+      Shell `case` patterns, one per line, e.g. `*.php` or `resources/js/*.jsx`. `*` also matches `/`.
+    required: true
+  exclude:
+    description: Patterns to drop, one per line, e.g. `_ide_helper*.php`.
+    required: false
+    default: ''
+  base:
+    description: Base commit. Needs `fetch-depth: 0` on checkout.
+    required: false
+    default: ${{ github.event.pull_request.base.sha }}
+  head:
+    description: Head commit.
+    required: false
+    default: ${{ github.event.pull_request.head.sha || github.sha }}
+
+outputs:
+  count:
+    description: Number of matching files that still exist; '0' when none.
+    value: ${{ steps.list.outputs.count }}
+  list:
+    description: >-
+      Path to a newline-separated file of the matches. Run a tool on them with
+      `tr '\n' '\0' < "$LIST" | xargs -0 <tool>`, guarded by `if: <step>.outputs.count != '0'`.
+    value: ${{ steps.list.outputs.list }}
+
+runs:
+  using: composite
+  steps:
+    - id: list
+      shell: bash
+      env:
+        PATTERNS: ${{ inputs.patterns }}
+        EXCLUDE: ${{ inputs.exclude }}
+        BASE_SHA: ${{ inputs.base }}
+        HEAD_SHA: ${{ inputs.head }}
+      run: '"$GITHUB_ACTION_PATH/changed-files.sh"'

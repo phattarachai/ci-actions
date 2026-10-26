@@ -1,0 +1,73 @@
+name: test
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck telegram-notify/notify.sh changed-files/changed-files.sh tests/*.sh
+      - run: bash tests/telegram-notify.sh
+      - run: bash tests/changed-files.sh
+
+  skipped:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
+
+  # Real toJSON(needs) from the runner, not a fixture: proves the parser reads what GitHub prints.
+  integration:
+    needs: [unit, skipped]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Parse a real needs context
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          TELEGRAM_NOTIFY_DRY_RUN: '1'
+          TELEGRAM_BOT_TOKEN: dry
+          TELEGRAM_CHAT_ID: dry
+        run: |
+          printf '%s\n' "$NEEDS_JSON"
+          line="$(bash telegram-notify/notify.sh | head -1)"
+          echo "$line"
+          [ "$line" = "✅ ci-actions — unit passed" ]
+
+      - name: Action wiring without secrets
+        uses: ./telegram-notify
+        with:
+          needs: ${{ toJSON(needs) }}
+
+      - name: changed-files on the last commit
+        id: changed
+        uses: ./changed-files
+        with:
+          patterns: '*'
+          base: ${{ github.sha }}~1
+          head: ${{ github.sha }}
+
+      - name: Read the list
+        env:
+          LIST: ${{ steps.changed.outputs.list }}
+          COUNT: ${{ steps.changed.outputs.count }}
+        run: |
+          [ "$COUNT" -gt 0 ]
+          tr '\n' '\0' < "$LIST" | xargs -0 ls -l

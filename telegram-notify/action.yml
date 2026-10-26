@@ -1,0 +1,31 @@
+name: Telegram notify
+description: >-
+  Send a run's outcome to Telegram, then fail the job if the run failed. Missing secrets skip the
+  message and exit 0, so notification plumbing never reddens a green run.
+
+inputs:
+  token:
+    description: Telegram bot token (secrets.TELEGRAM_BOT_TOKEN). Empty skips the message.
+    required: false
+    default: ''
+  chat-id:
+    description: Telegram chat id (secrets.TELEGRAM_CHAT_ID). Empty skips the message.
+    required: false
+    default: ''
+  needs:
+    description: >-
+      The jobs this one waits on, always passed as `${{ toJSON(needs) }}`. Every job `success` or
+      `skipped` sends ✅; anything else sends ❌ naming the first job that did not pass.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Send Telegram notification
+      shell: bash
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ inputs.token }}
+        TELEGRAM_CHAT_ID: ${{ inputs.chat-id }}
+        NEEDS_JSON: ${{ inputs.needs }}
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      run: '"$GITHUB_ACTION_PATH/notify.sh"'
