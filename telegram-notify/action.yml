@@ -14,7 +14,7 @@ inputs:
     default: ''
   needs:
     description: >-
-      The jobs this one waits on, always passed as `${{ toJSON(needs) }}`. Every job `success` or
+      The jobs this one waits on: always the expression toJSON(needs). Every job `success` or
       `skipped` sends ✅; anything else sends ❌ naming the first job that did not pass.
     required: true
 
