@@ -13,7 +13,7 @@ inputs:
     required: false
     default: ''
   base:
-    description: Base commit. Needs `fetch-depth: 0` on checkout.
+    description: 'Base commit. Needs `fetch-depth: 0` on checkout.'
     required: false
     default: ${{ github.event.pull_request.base.sha }}
   head:
