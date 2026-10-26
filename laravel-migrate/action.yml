@@ -1,0 +1,50 @@
+name: Laravel migrate
+description: >-
+  Run a deploy's migrations behind a rollback point: when migrations are pending, take a database
+  snapshot (spatie/laravel-db-snapshots) first, then run migrate. Nothing pending skips the snapshot.
+
+inputs:
+  working-directory:
+    description: >-
+      The deployed app's directory. Required: a job's defaults.run.working-directory does not reach
+      into a composite action, so leaving it out would migrate the runner's checkout instead.
+    required: true
+  artisan:
+    description: How to call artisan, e.g. `php artisan` or `sudo php artisan`.
+    required: false
+    default: php artisan
+  snapshot:
+    description: "'true' takes a snapshot before pending migrations; 'false' only migrates."
+    required: false
+    default: 'true'
+  compress:
+    description: "'true' passes --compress to snapshot:create (the production rollback dump is gzipped)."
+    required: false
+    default: 'true'
+  on-snapshot-failure:
+    description: >-
+      'stop' fails the step and leaves the schema untouched; 'continue' warns and migrates without a
+      rollback point.
+    required: false
+    default: stop
+
+outputs:
+  has-pending:
+    description: "'true' when migrations were pending (or migrate:status failed), else 'false'."
+    value: ${{ steps.migrate.outputs.has-pending }}
+  snapshot:
+    description: "'created', 'skipped' or 'failed'."
+    value: ${{ steps.migrate.outputs.snapshot }}
+
+runs:
+  using: composite
+  steps:
+    - id: migrate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ARTISAN: ${{ inputs.artisan }}
+        SNAPSHOT: ${{ inputs.snapshot }}
+        COMPRESS: ${{ inputs.compress }}
+        ON_SNAPSHOT_FAILURE: ${{ inputs.on-snapshot-failure }}
+      run: '"$GITHUB_ACTION_PATH/migrate.sh"'

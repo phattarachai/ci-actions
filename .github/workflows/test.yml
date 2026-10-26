@@ -19,9 +19,10 @@ jobs:
       - uses: actions/checkout@v5
       - name: shellcheck
         if: runner.os == 'Linux'
-        run: shellcheck telegram-notify/notify.sh changed-files/changed-files.sh tests/*.sh
+        run: shellcheck telegram-notify/notify.sh changed-files/changed-files.sh laravel-migrate/migrate.sh tests/*.sh
       - run: bash tests/telegram-notify.sh
       - run: bash tests/changed-files.sh
+      - run: bash tests/laravel-migrate.sh
 
   skipped:
     if: false
@@ -71,3 +72,29 @@ jobs:
         run: |
           [ "$COUNT" -gt 0 ]
           tr '\n' '\0' < "$LIST" | xargs -0 ls -l
+
+      - name: Fake artisan for laravel-migrate
+        run: |
+          mkdir -p "$RUNNER_TEMP/app"
+          cat > "$RUNNER_TEMP/artisan" <<'FAKE'
+          #!/usr/bin/env bash
+          echo "$(basename "$PWD") $*" >> "$RUNNER_TEMP/calls"
+          if [ "$1" = migrate:status ]; then echo "  2026_10_26_000000_add_column ...... Pending"; fi
+          FAKE
+          chmod +x "$RUNNER_TEMP/artisan"
+
+      - name: laravel-migrate with a pending migration
+        id: migrate
+        uses: ./laravel-migrate
+        with:
+          working-directory: ${{ runner.temp }}/app
+          artisan: ${{ runner.temp }}/artisan
+
+      - name: Check the calls and outputs
+        env:
+          HAS_PENDING: ${{ steps.migrate.outputs.has-pending }}
+          SNAPSHOT: ${{ steps.migrate.outputs.snapshot }}
+        run: |
+          cat "$RUNNER_TEMP/calls"
+          [ "$HAS_PENDING" = true ] && [ "$SNAPSHOT" = created ]
+          [ "$(paste -sd'|' "$RUNNER_TEMP/calls")" = "app migrate:status --pending --no-ansi|app snapshot:create --no-interaction --compress|app migrate --force --no-interaction" ]

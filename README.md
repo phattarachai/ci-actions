@@ -53,10 +53,28 @@ file. File names never pass through `${{ }}`, so a crafted name cannot inject sh
 
 Patterns are shell `case` patterns, one per line; `*` also matches `/`, so `*.php` matches any depth.
 
+## laravel-migrate
+
+A deploy's migrations behind a rollback point: when migrations are pending (or `migrate:status`
+itself fails), it takes a `snapshot:create --compress` first, then runs `migrate --force`. Nothing
+pending skips the snapshot. A failed snapshot stops the step before any migration runs.
+
+```yaml
+      - uses: phattarachai/ci-actions/laravel-migrate@v1
+        with:
+          working-directory: /var/www/app     # required: job defaults do not reach into an action
+          # artisan: sudo php artisan         # default: php artisan
+          # compress: 'false'                 # default: 'true'
+          # on-snapshot-failure: continue     # default: stop
+```
+
+Outputs `has-pending` (`true`/`false`) and `snapshot` (`created`/`skipped`/`failed`). Needs
+`spatie/laravel-db-snapshots` in the app.
+
 ## Releasing
 
 ```bash
-bash tests/telegram-notify.sh && bash tests/changed-files.sh
+bash tests/telegram-notify.sh && bash tests/changed-files.sh && bash tests/laravel-migrate.sh
 git tag v1.x.y && git tag -f v1 && git push origin v1.x.y && git push -f origin v1
 ```
 
