@@ -71,6 +71,80 @@ pending skips the snapshot. A failed snapshot stops the step before any migratio
 Outputs `has-pending` (`true`/`false`) and `snapshot` (`created`/`skipped`/`failed`). Needs
 `spatie/laravel-db-snapshots` in the app.
 
+### Migrating as the owner role
+
+Production databases split into two roles: the app's runtime role (DML only, password in `.env`) and
+an `<app>_owner` role that owns the schema and runs DDL. The owner has **no password**: it logs in
+only over the unix socket, through Postgres peer auth (a `pg_ident` map from the deploy OS user) or
+MySQL `auth_socket`. Nothing with a password can grant DDL, so a leaked `.env` cannot alter or drop
+the schema.
+
+`db-username` runs `migrate:status`, `snapshot:create` and `migrate` as that role, with
+`DB_PASSWORD` empty; Laravel's process env beats `.env`. The override is scoped to this step:
+nothing after it, and nothing the app serves, sees it.
+
+```yaml
+      - run: php artisan optimize:clear          # a cached config ignores env
+        working-directory: /var/www/app
+
+      - uses: phattarachai/ci-actions/laravel-migrate@v1     # pgsql, peer auth
+        with:
+          working-directory: /var/www/app
+          db-username: myapp_owner
+          db-host: /var/run/postgresql          # the socket directory
+
+      - run: php artisan optimize
+        working-directory: /var/www/app
+```
+
+```yaml
+      - uses: phattarachai/ci-actions/laravel-migrate@v1     # MySQL, auth_socket
+        with:
+          working-directory: /var/www/app
+          db-username: myapp_owner
+          db-socket: /run/mysqld/mysqld.sock
+```
+
+| Input | Exports for the three calls |
+| --- | --- |
+| `db-username` | `DB_USERNAME`, and `DB_PASSWORD=''` |
+| `db-host` | `DB_HOST` (pgsql: the socket directory) |
+| `db-socket` | `DB_SOCKET` (MySQL) |
+| `extra-env` | one `KEY=VALUE` per line, for a second connection migrations touch |
+
+```yaml
+          extra-env: |
+            LOG_DB_USERNAME=myapp_log_owner
+            LOG_DB_HOST=/var/run/postgresql
+            LOG_DB_PASSWORD=
+```
+
+`extra-env` values are literal: no quotes, no `$` expansion, empty allowed. It is parsed, never
+eval'd, and the log names only its keys. Blank lines and `#` comments are skipped.
+
+**The migrate step must sit between `optimize:clear` and `optimize`.** With
+`bootstrap/cache/config.php` present, Laravel reads neither `.env` nor the process env, so the
+override would be silently dropped and migrations would run as the app role (and fail on DDL, or
+worse, succeed with the wrong owner). Any override input with a cached config fails the step with
+an `::error::` before artisan runs; without override inputs a cached config is only a warning.
+The step logs which DB user it runs as, never a password.
+
+A plain step-level `env:` on the `uses:` step also works, because a composite action's steps
+inherit it, but it skips that guard, so prefer the inputs:
+
+```yaml
+      - uses: phattarachai/ci-actions/laravel-migrate@v1
+        env:
+          DB_USERNAME: myapp_owner
+          DB_PASSWORD: ''
+          DB_HOST: /var/run/postgresql
+        with:
+          working-directory: /var/www/app
+```
+
+Run artisan as the deploy user (the default `php artisan`): peer auth maps that OS user, and a
+`sudo` prefix drops the exported env through `env_reset`, which the step warns about.
+
 ## Releasing
 
 ```bash

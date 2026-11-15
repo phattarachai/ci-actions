@@ -27,6 +27,30 @@ inputs:
       rollback point.
     required: false
     default: stop
+  db-username:
+    description: >-
+      Run migrate:status, snapshot:create and migrate as this DB user, e.g. `myapp_owner`, with
+      DB_PASSWORD empty: the owner role has no password and logs in over the unix socket. Empty
+      keeps the app's own user from .env.
+    required: false
+    default: ''
+  db-host:
+    description: >-
+      DB_HOST for those calls. For pgsql peer auth, the socket directory, e.g. `/var/run/postgresql`.
+    required: false
+    default: ''
+  db-socket:
+    description: >-
+      DB_SOCKET for those calls. For MySQL auth_socket, e.g. `/run/mysqld/mysqld.sock`.
+    required: false
+    default: ''
+  extra-env:
+    description: >-
+      More env for those calls, one KEY=VALUE per line (e.g. a second connection's LOG_DB_USERNAME).
+      The value is literal and may be empty; blank lines and # comments are skipped. Only keys are
+      printed. Any override input fails the step when bootstrap/cache/config.php exists.
+    required: false
+    default: ''
 
 outputs:
   has-pending:
@@ -47,4 +71,8 @@ runs:
         SNAPSHOT: ${{ inputs.snapshot }}
         COMPRESS: ${{ inputs.compress }}
         ON_SNAPSHOT_FAILURE: ${{ inputs.on-snapshot-failure }}
+        MIGRATE_DB_USERNAME: ${{ inputs.db-username }}
+        MIGRATE_DB_HOST: ${{ inputs.db-host }}
+        MIGRATE_DB_SOCKET: ${{ inputs.db-socket }}
+        MIGRATE_EXTRA_ENV: ${{ inputs.extra-env }}
       run: '"$GITHUB_ACTION_PATH/migrate.sh"'

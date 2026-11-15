@@ -79,6 +79,7 @@ jobs:
           cat > "$RUNNER_TEMP/artisan" <<'FAKE'
           #!/usr/bin/env bash
           echo "$(basename "$PWD") $*" >> "$RUNNER_TEMP/calls"
+          echo "$1 u=${DB_USERNAME-unset} p=${DB_PASSWORD-unset} h=${DB_HOST-unset} lu=${LOG_DB_USERNAME-unset} lp=${LOG_DB_PASSWORD-unset}" >> "$RUNNER_TEMP/env"
           if [ "$1" = migrate:status ]; then echo "  2026_10_26_000000_add_column ...... Pending"; fi
           FAKE
           chmod +x "$RUNNER_TEMP/artisan"
@@ -98,3 +99,53 @@ jobs:
           cat "$RUNNER_TEMP/calls"
           [ "$HAS_PENDING" = true ] && [ "$SNAPSHOT" = created ]
           [ "$(paste -sd'|' "$RUNNER_TEMP/calls")" = "app migrate:status --pending --no-ansi|app snapshot:create --no-interaction --compress|app migrate --force --no-interaction" ]
+          [ "$(paste -sd'|' "$RUNNER_TEMP/env")" = "migrate:status u=unset p=unset h=unset lu=unset lp=unset|snapshot:create u=unset p=unset h=unset lu=unset lp=unset|migrate u=unset p=unset h=unset lu=unset lp=unset" ]
+
+      - name: laravel-migrate as the owner (inputs)
+        uses: ./laravel-migrate
+        with:
+          working-directory: ${{ runner.temp }}/app
+          artisan: ${{ runner.temp }}/artisan
+          db-username: myapp_owner
+          db-host: /var/run/postgresql
+          extra-env: |
+            LOG_DB_USERNAME=myapp_log_owner
+            LOG_DB_PASSWORD=
+
+      - name: Check the owner env reached every call
+        run: |
+          tail -3 "$RUNNER_TEMP/env"
+          owner="u=myapp_owner p= h=/var/run/postgresql lu=myapp_log_owner lp="
+          [ "$(tail -3 "$RUNNER_TEMP/env" | paste -sd'|' -)" = "migrate:status $owner|snapshot:create $owner|migrate $owner" ]
+
+      # A step-level env on the uses: step reaches the composite's steps too.
+      - name: laravel-migrate as the owner (step env)
+        uses: ./laravel-migrate
+        env:
+          DB_USERNAME: myapp_owner
+          DB_PASSWORD: ''
+        with:
+          working-directory: ${{ runner.temp }}/app
+          artisan: ${{ runner.temp }}/artisan
+
+      - name: Check the step env reached artisan
+        run: |
+          [ "$(tail -1 "$RUNNER_TEMP/env")" = "migrate u=myapp_owner p= h=unset lu=unset lp=unset" ]
+          mkdir -p "$RUNNER_TEMP/app/bootstrap/cache"
+          touch "$RUNNER_TEMP/app/bootstrap/cache/config.php"
+
+      - name: laravel-migrate refuses an override over a cached config
+        id: cached
+        continue-on-error: true
+        uses: ./laravel-migrate
+        with:
+          working-directory: ${{ runner.temp }}/app
+          artisan: ${{ runner.temp }}/artisan
+          db-username: myapp_owner
+
+      - name: Check the guard stopped it
+        env:
+          OUTCOME: ${{ steps.cached.outcome }}
+        run: |
+          [ "$OUTCOME" = failure ]
+          [ "$(tail -1 "$RUNNER_TEMP/env")" = "migrate u=myapp_owner p= h=unset lu=unset lp=unset" ]
