@@ -29,6 +29,15 @@ Every needed job `success` or `skipped` sends `✅ app — test · deploy passed
 the commit subject, the third the run URL. A send Telegram rejects is a warning on the run, not a
 red job.
 
+A needed job can add a line of its own: set a job output named `notice` (one plain line) and it is
+appended as `⚠️ <notice>`. The deploy uses it to report a dirty checkout it stashed before resetting:
+
+```yaml
+  deploy:
+    outputs:
+      notice: ${{ steps.code.outputs.notice }}
+```
+
 ## changed-files
 
 Lists a pull request's added, copied, modified and renamed files that match some patterns, into a
