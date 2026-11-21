@@ -11,6 +11,19 @@ jobs="$(printf '%s\n' "${NEEDS_JSON:-}" | awk '
   /^    "result": "/ { split($0, part, "\""); print job " " part[4] }
 ')"
 
+# A job's `notice` output (depth 3: job → outputs → notice) rides along as a ⚠️ line, e.g. a deploy that
+# had to stash a dirty checkout. Only \" and \\ are unescaped; a notice is one plain line.
+notices="$(printf '%s\n' "${NEEDS_JSON:-}" | awk '
+  /^      "notice": "/ {
+    value = $0
+    sub(/^      "notice": "/, "", value)
+    sub(/",?[[:space:]]*$/, "", value)
+    gsub(/\\"/, "\"", value)
+    gsub(/\\\\/, "\\", value)
+    if (value != "") print "⚠️ " value
+  }
+')"
+
 if [ -z "$jobs" ]; then
   echo "::error::telegram-notify got no job results: pass needs: \${{ toJSON(needs) }}"
   exit 1
@@ -54,6 +67,7 @@ text="$(printf '%s %s — %s\n%s · %s\n%s/%s/actions/runs/%s' \
   "$icon" "${GITHUB_REPOSITORY##*/}" "$state" \
   "$GITHUB_REF_NAME" "$subject" \
   "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+[ -z "$notices" ] || text="$(printf '%s\n%s' "$text" "$notices")"
 
 if [ "${TELEGRAM_NOTIFY_DRY_RUN:-0}" = 1 ]; then
   printf '%s\n' "$text"

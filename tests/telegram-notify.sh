@@ -74,4 +74,38 @@ else
   failures=$((failures + 1))
 fi
 
+with_notice='{
+  "test": {
+    "result": "success",
+    "outputs": {}
+  },
+  "deploy": {
+    "result": "success",
+    "outputs": {
+      "notice": "Stashed uncommitted changes before deploy: \"deploy abc1234 autosave\""
+    }
+  }
+}'
+last_line="$(env -i PATH="$PATH" NEEDS_JSON="$with_notice" TELEGRAM_NOTIFY_DRY_RUN=1 \
+  TELEGRAM_BOT_TOKEN=t TELEGRAM_CHAT_ID=c GITHUB_SHA=abcdef1234 GITHUB_REPOSITORY=org/app \
+  GITHUB_REF_NAME=main GITHUB_SERVER_URL=https://github.com GITHUB_RUN_ID=42 \
+  bash telegram-notify/notify.sh | tail -1)"
+if [ "$last_line" = '⚠️ Stashed uncommitted changes before deploy: "deploy abc1234 autosave"' ]; then
+  echo "ok   a job's notice output is appended"
+else
+  echo "FAIL a job's notice output is appended: got '$last_line'"
+  failures=$((failures + 1))
+fi
+
+no_notice_lines="$(env -i PATH="$PATH" NEEDS_JSON="$(needs_json test=success deploy=success)" TELEGRAM_NOTIFY_DRY_RUN=1 \
+  TELEGRAM_BOT_TOKEN=t TELEGRAM_CHAT_ID=c GITHUB_SHA=abcdef1234 GITHUB_REPOSITORY=org/app \
+  GITHUB_REF_NAME=main GITHUB_SERVER_URL=https://github.com GITHUB_RUN_ID=42 \
+  bash telegram-notify/notify.sh | wc -l | tr -d ' ')"
+if [ "$no_notice_lines" = 3 ]; then
+  echo "ok   no notice adds no line"
+else
+  echo "FAIL no notice adds no line: got $no_notice_lines lines"
+  failures=$((failures + 1))
+fi
+
 [ "$failures" = 0 ] || { echo "$failures failure(s)"; exit 1; }
